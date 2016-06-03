@@ -28,10 +28,8 @@ $ws_worker->onMessage = function ($connection, $data) use ($ws_worker, &$Auth) {
 	switch ($obj->action) {
 		case 'auth':
 			$Auth[$key] = true;
-			var_dump($Auth);
 			break;
 		case 'speak':
-			var_dump($Auth);
 			if (!empty($Auth[$key]) && $Auth[$key] === true) {
 				foreach ($ws_worker->connections as $con) {
 					$con->send($obj->content);
