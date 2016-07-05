@@ -1,4 +1,4 @@
-function DANMU(port,room_id,callback){
+function DANMU(domain,port,room_id,callback){
     if(!(this instanceof DANMU)){
         console.log('you are call this in a wrong way!!!!');
         return;
@@ -19,7 +19,7 @@ function DANMU(port,room_id,callback){
     // 连接服务端
     this.connect = function(){
        // 创建websocket
-       this.ws = new WebSocket("ws://"+document.domain+":"+port);
+       this.ws = new WebSocket("ws://"+domain+":"+port);
        // 当socket连接打开时，输入用户名
        this.ws.onopen = onopen;
        // 当有消息时根据消息类型显示不同信息

@@ -14,7 +14,7 @@
   <script type="text/javascript">
 
 
-    var dm = new DANMU(7272,1,function( name,content){
+    var dm = new DANMU(document.domain,7272,1,function( name,content){
       console.log(name,content);
     });
     dm.connect();
