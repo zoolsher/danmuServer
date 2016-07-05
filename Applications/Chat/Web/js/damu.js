@@ -15,7 +15,7 @@ function DANMU(domain,port,room_id,callback){
     this.room_id = room_id;
     var ws;
     var client_list={};
-
+    var self = this;
     // 连接服务端
     this.connect = function(){
        // 创建websocket
@@ -26,7 +26,7 @@ function DANMU(domain,port,room_id,callback){
        this.ws.onmessage = onmessage; 
        this.ws.onclose = function() {
     	  console.log("连接关闭，定时重连");
-          this.connect();
+          self.connect();
        };
        this.ws.onerror = function() {
      	  console.log("出现错误");
