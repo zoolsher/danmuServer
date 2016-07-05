@@ -1,4 +1,4 @@
-function DANMU(domain,port,room_id,callback){
+function DANMU(domain,port,room_id,name,callback){
     if(!(this instanceof DANMU)){
         console.log('you are call this in a wrong way!!!!');
         return;
