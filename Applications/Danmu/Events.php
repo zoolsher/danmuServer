@@ -24,7 +24,6 @@
  * 主要是处理 onMessage onClose
  */
 use \GatewayWorker\Lib\Gateway;
-use \Application\Chat\Web\Settings;
 
 class Events {
 
@@ -52,10 +51,9 @@ class Events {
 					throw new \Exception("\$_SESSION['room_id'] not set. client_ip:{$_SERVER['REMOTE_ADDR']}");
 				}
 				$room_id = $_SESSION['room_id'];
-				$clients_list = Gateway::getClientInfoByGroup($room_id);
 
 				// 回应心跳和当前房间人数 message格式： { type: 'pong', num: xxx }
-				$new_message = array('type' => 'pong', 'num' => count($clients_list));
+				$new_message = array('type' => 'pong', 'num' => Gateway::getClientCountByGroup($room_id));
 
 				return Gateway::sendToCurrentClient(json_encode($new_message));
 			// 客户端登录 message格式: {type:login, uid:xx, token:xx, room_id:1} ，认证用户信息，添加到客户端
@@ -67,23 +65,33 @@ class Events {
 
 				// 把房间号昵称放到session中
 				$room_id = $message_data['room_id'];
-				//TODO 认证逻辑 认证失败作为游客
-				
+				// 认证逻辑 认证失败作为游客
 				$client_uid = $message_data['uid'];
 				$client_token = $message_data['token'];
-				$client_name = '游客'.$client_uid;
-				
+				$client_name = '游客';
+				$authjson = file_get_contents(sprintf(Settings::AUTH_URL, $client_token, $client_uid));
+				$auth = json_decode($authjson);
+				if($auth->success) {
+					$client_name = $auth->data->username;
+					$_SESSION['client_auth'] = true; // 是否认证，认证失败无发送消息权限
+				} else {
+					// $client_name = $auth['data']['username'];
+					$_SESSION['client_auth'] = false;
+				}
+
 				$_SESSION['room_id'] = $room_id;
 				$_SESSION['client_name'] = $client_name;
-				$_SESSION['client_uid'] = $client_uid;
-				$_SESSION['client_auth'] = true; // 是否认证，认证失败无发送消息权限
+				$_SESSION['client_uid'] = $client_uid;		
 
 				// 回应登录信息 message格式 {type:login, state:true/false, data:[client_id,client_name], num:xxx}
-				$clients_list = Gateway::getClientInfoByGroup($room_id);
-				$new_message = array('type'=> 'login', 'state'=> true, 'data'=>array($client_id, $client_name), 'num' => count($clients_list));
+				$new_message = array('type'=> 'login', 'state'=> true, 'data'=>array($client_id, $client_name), 'num' => Gateway::getClientCountByGroup($room_id));
 				
 				Gateway::joinGroup($client_id, $room_id);
-				return Gateway::sendToCurrentClient(json_encode($new_message));
+				Gateway::sendToCurrentClient(json_encode($new_message));
+
+				// 广播当前房间人数 {type:'sys_num', num:123 }
+				$new_message = array('type' => 'sys_num', 'num' => Gateway::getClientCountByGroup($room_id));
+				return Gateway::sendToGroup($room_id, json_encode($new_message));
 
 			// 客户端弹幕 message: {type:danmu, content:xx, time:xx}
 			case 'danmu':
@@ -91,9 +99,15 @@ class Events {
 				if (!isset($_SESSION['room_id'])) {
 					throw new \Exception("\$_SESSION['room_id'] not set. client_ip:{$_SERVER['REMOTE_ADDR']}");
 				}
+
+				// 游客发送的弹幕不进行广播
+				if(!$_SESSION['client_auth']) {
+					return;
+				}
+
 				$room_id = $_SESSION['room_id'];
 				$client_name = $_SESSION['client_name'];
-
+				
 				// 广播弹幕格式 {type:'danmu', data:[[client_id,client_name,...], 'danmudata', 'time']}
 				$new_message = array(
 					'type' => 'danmu',

@@ -22,7 +22,7 @@ Autoloader::setRootPath(__DIR__);
 // gateway 进程
 $gateway = new Gateway("Websocket://0.0.0.0:7272");
 // 设置名称，方便status时查看
-$gateway->name = 'ChatGateway';
+$gateway->name = 'DanmuGateway';
 // 设置进程数，gateway进程数建议与cpu核数相同
 $gateway->count = 4;
 // 分布式部署时请设置成内网ip（非127.0.0.1）
