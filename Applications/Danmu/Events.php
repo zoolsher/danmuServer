@@ -26,6 +26,31 @@
 use \GatewayWorker\Lib\Gateway;
 
 class Events {
+	/**
+	 * 获取组的配置数组
+	 * @param int $group_id
+	 */
+	protected static function getGroupConfigById($group_id){
+		if(!isset($_SERVER['GROUP_CONFIG'])) {
+			$_SERVER['GROUP_CONFIG'] = array();
+		}
+		$group_config = $_SERVER['GROUP_CONFIG'];
+		if(!isset($group_config[$group_id])) {
+			$groupconfig = array();
+			
+			// 不存在 或 30分钟之后 更新配置
+			if(!isset($groupconfig['updatetime']) || (time() - $groupconfig['updatetime']) > 30*60) {
+				$roomconfig = file_get_contents(sprintf(Settings::CONFIG_GET_URL, $group_id));
+				$roomconfig = json_decode($roomconfig);
+				$groupconfig['updatetime'] = time();
+				$groupconfig['upuid'] = $roomconfig->data->upuid;
+				$groupconfig['danmu'] = $roomconfig->data->danmu;
+				$groupconfig['isopen'] = $roomconfig->data->isopen;
+			}
+			$group_config[$group_id] = $groupconfig;
+		}
+		return $group_config[$group_id];
+	}
 
 	/**
 	 * 有消息时
@@ -69,19 +94,34 @@ class Events {
 				$client_uid = $message_data['uid'];
 				$client_token = $message_data['token'];
 				$client_name = '游客';
-				$authjson = file_get_contents(sprintf(Settings::AUTH_URL, $client_token, $client_uid));
-				$auth = json_decode($authjson);
-				if($auth->success) {
-					$client_name = $auth->data->username;
-					$_SESSION['client_auth'] = true; // 是否认证，认证失败无发送消息权限
-				} else {
-					// $client_name = $auth['data']['username'];
-					$_SESSION['client_auth'] = false;
+				$client_auth = false;
+				$client_isup = false; // 当前房间所有者
+				
+				// 未配置认证则默认为 游客
+				if(Settings::AUTH_URL) {
+					$authjson = file_get_contents(sprintf(Settings::AUTH_URL, $client_token, $client_uid));
+					$auth = json_decode($authjson);
+					if($auth->success) {
+						$client_name = $auth->data->username;
+						$client_auth = true; // 是否认证，认证失败无发送消息权限
+					}
 				}
 
+				// 配置获取配置地址 检查房间配置
+				if (Settings::CONFIG_GET_URL) {
+					$roomconfig = self::getGroupConfigById($room_id);
+					echo json_encode($roomconfig);
+					// 房间uid与客户端uid匹配 并且 客户端已认证
+					if(($roomconfig['upuid']==$client_uid) && $client_auth){
+						$client_isup = true; // 成为房间所有者
+					}
+				}
+				
 				$_SESSION['room_id'] = $room_id;
 				$_SESSION['client_name'] = $client_name;
-				$_SESSION['client_uid'] = $client_uid;		
+				$_SESSION['client_uid'] = $client_uid;	
+				$_SESSION['client_auth'] = $client_auth;
+				$_SESSION['client_isup'] = false;
 
 				// 回应登录信息 message格式 {type:login, state:true/false, data:[client_id,client_name], num:xxx}
 				$new_message = array('type'=> 'login', 'state'=> true, 'data'=>array($client_id, $client_name), 'num' => Gateway::getClientCountByGroup($room_id));
@@ -107,6 +147,7 @@ class Events {
 
 				$room_id = $_SESSION['room_id'];
 				$client_name = $_SESSION['client_name'];
+				$client_isup = $_SESSION['client_isup'];
 				
 				// 广播弹幕格式 {type:'danmu', data:[[client_id,client_name,...], 'danmudata', 'time']}
 				$new_message = array(
@@ -114,13 +155,30 @@ class Events {
 					'data' => array(
 						array(
 							$client_id,
-							$client_name
+							$client_name,
+							$client_isup
 						),
 						nl2br(htmlspecialchars($message_data['content'])),
 						date('Y-m-d H:i:s')
 					)
 				);
 				return Gateway::sendToGroup($room_id, json_encode($new_message));
+			case 'sys_config':
+				// 非法请求和未认证无法使用此命令
+				if (!isset($_SESSION['room_id']) && !$_SESSION['client_auth']) {
+					return;
+				}
+
+				// 未设置配置获取地址无法使用此命令
+				if (!Settings::CONFIG_GET_URL) {
+					return;
+				}
+
+				$groupconfig = self::getGroupConfigById($_SESSION['room_id']);
+
+				// 返回房间状态 {type:'sys_config', data: { 'up':'xxx', 'danmu':true, 'open':false, 'roomid':123 }}
+				$new_message = array('type' => 'sys_config', 'data' => array( 'up' => $groupconfig['upuid'], 'danmu' => $groupconfig['danmu'], 'open' => $groupconfig['isopen'], 'roomid' => $_SESSION['room_id']));
+				return Gateway::sendToCurrentClient(json_encode($new_message));
 		}
 	}
 
